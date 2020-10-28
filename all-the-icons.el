@@ -807,6 +807,15 @@ Providing ARG-OVERRIDES will modify the creation of the icon."
 
 ;; Icon Functions
 
+(defun all-the-icons-check--overrides (icon &rest arg-overrides)
+  "TODO"
+  (cl-destructuring-bind (cached icon-fn . args) icon
+    (if arg-overrides
+        (apply icon-fn
+               (append `(,(car args)) arg-overrides (cdr args)))
+      cached)))
+
+
 ;;;###autoload
 (defun all-the-icons-icon-for-dir (dir &rest arg-overrides)
   "Get the formatted icon for DIR.
@@ -818,8 +827,7 @@ Note: You want chevron, please use `all-the-icons-icon-for-dir-with-chevron'."
   (let* ((dirname (file-name-base (directory-file-name dir)))
          (path (expand-file-name dir))
          (icon (all-the-icons-match-to-alist dirname all-the-icons-dir-icon-alist))
-         (args (cdr icon)))
-    (when arg-overrides (setq args (append `(,(car args)) arg-overrides (cdr args))))
+         (args (cdddr icon)))
     (cond
      ((file-symlink-p path)
       (apply #'all-the-icons-octicon "file-symlink-directory" (cdr args)))
@@ -827,7 +835,9 @@ Note: You want chevron, please use `all-the-icons-icon-for-dir-with-chevron'."
       (apply #'all-the-icons-octicon "file-submodule" (cdr args)))
      ((file-exists-p (format "%s/.git" path))
       (apply #'all-the-icons-octicon "repo" (cdr args)))
-     (t (apply (car icon) args)))))
+     (t (all-the-icons-check--overrides
+         icon
+         arg-overrides)))))
 
 ;;;###autoload
 (defun all-the-icons-icon-for-file (file &rest arg-overrides)
@@ -835,10 +845,9 @@ Note: You want chevron, please use `all-the-icons-icon-for-dir-with-chevron'."
 ARG-OVERRIDES should be a plist containining `:height',
 `:v-adjust' or `:face' properties like in the normal icon
 inserting functions."
-  (let* ((icon (all-the-icons-match-to-alist file all-the-icons-icon-alist))
-         (args (cdr icon)))
-    (when arg-overrides (setq args (append `(,(car args)) arg-overrides (cdr args))))
-    (apply (car icon) args)))
+  (all-the-icons-check--overrides
+   (all-the-icons-match-to-alist file all-the-icons-icon-alist)
+   arg-overrides))
 
 ;;;###autoload
 (defun all-the-icons-icon-for-mode (mode &rest arg-overrides)
@@ -846,11 +855,9 @@ inserting functions."
 ARG-OVERRIDES should be a plist containining `:height',
 `:v-adjust' or `:face' properties like in the normal icon
 inserting functions."
-  (let* ((icon (cdr (or (assoc mode all-the-icons-mode-icon-alist)
-                        (assoc (get mode 'derived-mode-parent) all-the-icons-mode-icon-alist))))
-         (args (cdr icon)))
-    (when arg-overrides (setq args (append `(,(car args)) arg-overrides (cdr args))))
-    (if icon (apply (car icon) args) mode)))
+  (when-let ((icon (cdr (or (assoc mode all-the-icons-mode-icon-alist)
+                            (assoc (get mode 'derived-mode-parent) all-the-icons-mode-icon-alist)))))
+    (all-the-icons-check--overrides icon arg-overrides)))
 
 ;;;###autoload
 (defun all-the-icons-icon-for-url (url &rest arg-overrides)
@@ -859,13 +866,9 @@ If an icon for URL isn't found in `all-the-icons-url-alist', a globe is used.
 ARG-OVERRIDES should be a plist containining `:height',
 `:v-adjust' or `:face' properties like in the normal icon
 inserting functions."
-  (let* ((icon (all-the-icons-match-to-alist url all-the-icons-url-alist))
-         (args (cdr icon)))
-    (unless icon
-      (setq icon '(all-the-icons-faicon "globe"))
-      (setq args (cdr icon)))
-    (when arg-overrides (setq args (append `(,(car args)) arg-overrides (cdr args))))
-    (apply (car icon) args)))
+  (all-the-icons-check--overrides
+   (all-the-icons-match-to-alist url all-the-icons-url-alist)
+   arg-overrides))
 
 (defcustom all-the-icons--cache-limit 2048
   "Maximum cache size for functions cached by `all-the-icons-cache'."
@@ -1090,6 +1093,20 @@ FONT-NAME is the name of the .ttf file providing the font, defaults to FAMILY."
 (all-the-icons-define-icon octicon    all-the-icons-data/octicons-alist       "github-octicons" "octicons")
 (all-the-icons-define-icon wicon      all-the-icons-data/weather-icons-alist  "Weather Icons"   "weathericons")
 (all-the-icons-define-icon material   all-the-icons-data/material-icons-alist "Material Icons"  "material-design-icons")
+
+(defun all-the-icons-compile-icons (var)
+  "TODO"
+  (set var
+       (mapcar (lambda (icon)
+                 (cl-destructuring-bind (regexp func . args) icon
+                   `(,regexp ,(ignore-errors (apply func args)) ,func . ,args)))
+               (symbol-value var))))
+
+(all-the-icons-compile-icons 'all-the-icons-url-alist)
+(all-the-icons-compile-icons 'all-the-icons-mode-icon-alist)
+(all-the-icons-compile-icons 'all-the-icons-weather-icon-alist)
+(all-the-icons-compile-icons 'all-the-icons-dir-icon-alist)
+(all-the-icons-compile-icons 'all-the-icons-icon-alist)
 
 (provide 'all-the-icons)
 
